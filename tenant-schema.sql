@@ -416,7 +416,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   paid_total           INTEGER NOT NULL DEFAULT 0,
   change_due           INTEGER NOT NULL DEFAULT 0,
   status               TEXT NOT NULL DEFAULT 'completed'
-                       CHECK (status IN ('completed', 'partial', 'pending', 'cancelled')),
+                       CHECK (status IN ('completed', 'partial', 'pending', 'cancelled', 'void')),
   void_reason          TEXT,
   notes                TEXT,
   created_by           TEXT REFERENCES users (id),
