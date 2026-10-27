@@ -373,11 +373,7 @@ CREATE TABLE IF NOT EXISTS imei_units (
   notes                 TEXT,
   created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-, purchase_id TEXT REFERENCES purchases (id), warranty_days INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, variant_id TEXT REFERENCES product_variants (id)
--- Frozen at the sale: changing an employee's commission rate must never
--- rewrite commission already earned.
-, commission_rate_at_sale INTEGER NOT NULL DEFAULT 0
-, commission_amount INTEGER NOT NULL DEFAULT 0);
+, purchase_id TEXT REFERENCES purchases (id), warranty_days INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, variant_id TEXT REFERENCES product_variants (id));
 
 CREATE TABLE IF NOT EXISTS invoice_items (
   id                   TEXT PRIMARY KEY NOT NULL,
@@ -778,11 +774,7 @@ CREATE TABLE IF NOT EXISTS purchase_return_items (
       qty            INTEGER NOT NULL DEFAULT 0,
       unit_cost      INTEGER NOT NULL DEFAULT 0,
       return_value   INTEGER NOT NULL DEFAULT 0
-    , variant_id TEXT REFERENCES product_variants (id)
--- Frozen at the sale: changing an employee's commission rate must never
--- rewrite commission already earned.
-, commission_rate_at_sale INTEGER NOT NULL DEFAULT 0
-, commission_amount INTEGER NOT NULL DEFAULT 0);
+    , variant_id TEXT REFERENCES product_variants (id));
 
 CREATE TABLE IF NOT EXISTS purchase_returns (
       id                     TEXT PRIMARY KEY,
@@ -988,11 +980,7 @@ CREATE TABLE IF NOT EXISTS sale_order_items (
           flat_discount    INTEGER DEFAULT 0,
           net_price        INTEGER NOT NULL DEFAULT 0,
           line_total       INTEGER NOT NULL DEFAULT 0
-        , variant_id TEXT REFERENCES product_variants (id)
--- Frozen at the sale: changing an employee's commission rate must never
--- rewrite commission already earned.
-, commission_rate_at_sale INTEGER NOT NULL DEFAULT 0
-, commission_amount INTEGER NOT NULL DEFAULT 0);
+        , variant_id TEXT REFERENCES product_variants (id));
 
 CREATE TABLE IF NOT EXISTS sale_orders (
           id                     TEXT PRIMARY KEY,
@@ -1108,11 +1096,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   notes         TEXT,
   created_by    TEXT REFERENCES users (id),
   occurred_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-, variant_id TEXT REFERENCES product_variants (id)
--- Frozen at the sale: changing an employee's commission rate must never
--- rewrite commission already earned.
-, commission_rate_at_sale INTEGER NOT NULL DEFAULT 0
-, commission_amount INTEGER NOT NULL DEFAULT 0);
+, variant_id TEXT REFERENCES product_variants (id));
 
 CREATE TABLE IF NOT EXISTS supplier_documents (
   id             TEXT PRIMARY KEY NOT NULL,
@@ -1147,11 +1131,7 @@ CREATE TABLE IF NOT EXISTS web_order_items (
       unit_price    INTEGER NOT NULL DEFAULT 0,
       qty           INTEGER NOT NULL DEFAULT 1,
       line_total    INTEGER NOT NULL DEFAULT 0
-    , variant_id TEXT REFERENCES product_variants (id)
--- Frozen at the sale: changing an employee's commission rate must never
--- rewrite commission already earned.
-, commission_rate_at_sale INTEGER NOT NULL DEFAULT 0
-, commission_amount INTEGER NOT NULL DEFAULT 0);
+    , variant_id TEXT REFERENCES product_variants (id));
 
 CREATE TABLE IF NOT EXISTS web_orders (
       id                TEXT PRIMARY KEY NOT NULL,
@@ -1184,6 +1164,58 @@ CREATE TABLE IF NOT EXISTS web_orders (
 
       created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
       updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+
+-- table: qist_plans
+-- Instalment sales. See mobipos-software/lib/qist.js.
+CREATE TABLE IF NOT EXISTS qist_plans (
+      id                TEXT PRIMARY KEY NOT NULL,
+      owner_user_id     TEXT NOT NULL REFERENCES users (id),
+      plan_no           TEXT NOT NULL,
+
+      customer_id       TEXT NOT NULL REFERENCES customers (id),
+      invoice_id        TEXT REFERENCES invoices (id),
+
+      item_label        TEXT NOT NULL,
+      product_id        TEXT REFERENCES products (id),
+      imei              TEXT,
+
+      cash_price        INTEGER NOT NULL DEFAULT 0,
+      total_price       INTEGER NOT NULL,
+      advance           INTEGER NOT NULL DEFAULT 0,
+
+      months            INTEGER NOT NULL,
+      monthly_amount    INTEGER NOT NULL,
+      start_date        TEXT NOT NULL,
+
+      status            TEXT NOT NULL DEFAULT 'active',
+
+      guarantor_name    TEXT,
+      guarantor_phone   TEXT,
+      notes             TEXT,
+
+      created_by        TEXT REFERENCES users (id),
+      occurred_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      deleted_at        TEXT,
+      created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+
+-- table: qist_installments
+-- One row per instalment, written out in full when the plan is created.
+CREATE TABLE IF NOT EXISTS qist_installments (
+      id            TEXT PRIMARY KEY NOT NULL,
+      owner_user_id TEXT NOT NULL REFERENCES users (id),
+      plan_id       TEXT NOT NULL REFERENCES qist_plans (id),
+
+      seq           INTEGER NOT NULL,
+      due_date      TEXT NOT NULL,
+      amount        INTEGER NOT NULL,
+      paid_amount   INTEGER NOT NULL DEFAULT 0,
+      paid_at       TEXT,
+
+      created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
     );
 
 -- ── Indexes ──────────────────────────────────────────────────────────────
@@ -1286,3 +1318,6 @@ CREATE INDEX IF NOT EXISTS stock_movements_product_idx
   ON stock_movements (owner_user_id, product_id);
 CREATE INDEX IF NOT EXISTS web_order_items_order_idx ON web_order_items (order_id);
 CREATE INDEX IF NOT EXISTS web_orders_status_idx ON web_orders (status, created_at);
+CREATE INDEX IF NOT EXISTS qist_plans_owner_status_idx ON qist_plans (owner_user_id, status);
+CREATE INDEX IF NOT EXISTS qist_inst_plan_idx ON qist_installments (plan_id, seq);
+CREATE INDEX IF NOT EXISTS qist_inst_owner_due_idx ON qist_installments (owner_user_id, due_date);
