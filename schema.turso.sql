@@ -332,3 +332,86 @@ CREATE TABLE IF NOT EXISTS payments (
 
 CREATE INDEX IF NOT EXISTS payments_invoice_idx  ON payments (invoice_id);
 CREATE INDEX IF NOT EXISTS payments_purchase_idx ON payments (purchase_id);
+
+
+-- ============================================================
+--  printers — thermal receipt printers (USB/COM + Windows USB)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS printers (
+  id                TEXT PRIMARY KEY NOT NULL,
+  owner_user_id     TEXT NOT NULL REFERENCES users (id),
+  name              TEXT NOT NULL,
+  connection_type   TEXT NOT NULL DEFAULT 'usb'
+                    CHECK (connection_type IN ('usb', 'windows_usb', 'network')),
+  usb_port          TEXT,
+  usb_printer_name  TEXT,
+  ip_address        TEXT,
+  ip_port           INTEGER,
+  paper_width       INTEGER NOT NULL DEFAULT 48,
+  model             TEXT,
+  is_default        INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+  is_active         INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  last_connected_at TEXT,
+  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS printers_owner_idx ON printers (owner_user_id);
+
+
+-- ============================================================
+--  receipt_settings — what prints on the thermal receipt
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS receipt_settings (
+  id                  TEXT PRIMARY KEY NOT NULL,
+  owner_user_id       TEXT NOT NULL UNIQUE REFERENCES users (id),
+
+  -- Business info / text content
+  store_name          TEXT,
+  phone1              TEXT,
+  phone2              TEXT,
+  email               TEXT,
+  address             TEXT,
+  tagline_text        TEXT,
+  thankyou_text       TEXT,
+  footer_note_text    TEXT,
+  branding_text       TEXT,
+
+  -- Branding images (Cloudinary secure URLs) + print sizes (px width)
+  logo_url            TEXT,
+  qr_url              TEXT,
+  logo_size           INTEGER NOT NULL DEFAULT 250,
+  qr_size             INTEGER NOT NULL DEFAULT 200,
+
+  -- Header toggles
+  show_logo           INTEGER NOT NULL DEFAULT 1 CHECK (show_logo IN (0,1)),
+  show_shop_name      INTEGER NOT NULL DEFAULT 1 CHECK (show_shop_name IN (0,1)),
+  show_tagline        INTEGER NOT NULL DEFAULT 1 CHECK (show_tagline IN (0,1)),
+  show_address        INTEGER NOT NULL DEFAULT 1 CHECK (show_address IN (0,1)),
+  show_phone          INTEGER NOT NULL DEFAULT 1 CHECK (show_phone IN (0,1)),
+  show_email          INTEGER NOT NULL DEFAULT 1 CHECK (show_email IN (0,1)),
+
+  -- Transaction-detail toggles
+  show_invoice_no     INTEGER NOT NULL DEFAULT 1 CHECK (show_invoice_no IN (0,1)),
+  show_datetime       INTEGER NOT NULL DEFAULT 1 CHECK (show_datetime IN (0,1)),
+  show_cashier        INTEGER NOT NULL DEFAULT 1 CHECK (show_cashier IN (0,1)),
+  show_customer       INTEGER NOT NULL DEFAULT 1 CHECK (show_customer IN (0,1)),
+  show_customer_phone INTEGER NOT NULL DEFAULT 1 CHECK (show_customer_phone IN (0,1)),
+  show_payment_method INTEGER NOT NULL DEFAULT 1 CHECK (show_payment_method IN (0,1)),
+
+  -- Footer toggles
+  show_thankyou       INTEGER NOT NULL DEFAULT 1 CHECK (show_thankyou IN (0,1)),
+  show_footer_note    INTEGER NOT NULL DEFAULT 1 CHECK (show_footer_note IN (0,1)),
+  show_qr             INTEGER NOT NULL DEFAULT 1 CHECK (show_qr IN (0,1)),
+  show_branding       INTEGER NOT NULL DEFAULT 1 CHECK (show_branding IN (0,1)),
+
+  -- Print behaviour
+  auto_print          INTEGER NOT NULL DEFAULT 1 CHECK (auto_print IN (0,1)),
+  copies              INTEGER NOT NULL DEFAULT 1,
+  beep                INTEGER NOT NULL DEFAULT 1 CHECK (beep IN (0,1)),
+
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);

@@ -2,7 +2,9 @@
 
 **Engine:** Turso / LibSQL (SQLite-compatible)  
 **Version:** V1 — Phase 1  
-**Money:** All monetary values are `INTEGER` in PKR whole rupees (no decimals)  
+**Money:** All monetary values are `INTEGER` **paisa** — PKR rupees × 100.
+A 44,999 phone stores as `4499900`. Format with `formatMoney()` (`mobipos-software/lib/format.js`);
+never divide by 100 anywhere else.  
 **IDs:** `TEXT PRIMARY KEY` using ULIDs  
 **Timestamps:** `TEXT` in ISO-8601 format e.g. `2026-04-06T10:30:00Z`  
 **Soft deletes:** `deleted_at TEXT` — `NULL` = active, timestamp = deleted  
@@ -94,6 +96,17 @@ Schema change made?
 | 14 | [14_invoices.sql](tables/14_invoices.sql) | `invoices` | Sales and return transactions |
 | 15 | [15_invoice_items.sql](tables/15_invoice_items.sql) | `invoice_items` | Line items for each invoice |
 | 16 | [16_payments.sql](tables/16_payments.sql) | `payments` | Individual payment events (in / out) |
+| 17 | [17_stock_movements.sql](tables/17_stock_movements.sql) | `stock_movements` | Qty-product stock ledger (purchase/sale/adjustment) |
+| 18 | [18_ledger_entries.sql](tables/18_ledger_entries.sql) | `ledger_entries` | Customer/supplier khata ledger (double-entry) |
+| 19 | [19_expenses.sql](tables/19_expenses.sql) | `expenses` | Shop operating expenses (feeds P&L net profit) |
+| 20 | [20_payment_accounts.sql](tables/20_payment_accounts.sql) | `payment_accounts` | Central money-holding accounts — replaces hardcoded payment methods |
+| 24 | [24_product_variants.sql](tables/24_product_variants.sql) | `product_variants` | The stockable unit — priced, counted, scannable |
+| 25 | [25_barcodes.sql](tables/25_barcodes.sql) | `barcodes` | Many codes → one variant or one unit |
+
+> Tables 17–20 ship as `migrate_01`…`migrate_04_payment_accounts.sql` (run in the Turso editor), not in `schema.sql`.
+> `migrate_04` also rebuilds `payments` to drop the `method` CHECK and add `payment_account_id`.
+> Tables 24–25 ship as `migrations/migrate_14_variants_barcodes.sql` and are applied **automatically** by
+> `mobipos-software/lib/variants.js` `ensureVariantsSchema()` on first touch — no manual run.
 
 ---
 
@@ -105,8 +118,12 @@ users
  ├── document_counters      (owner_user_id)
  ├── categories             (owner_user_id)
  ├── products               (owner_user_id)
- │    ├── product_stock     (product_id)
- │    └── imei_units        (product_id)
+ │    └── product_variants  (product_id)   ← the stockable unit; 1 default per product
+ │         ├── barcodes     (variant_id)   ← many codes → this variant
+ │         ├── product_stock(variant_id)
+ │         ├── stock_movements (variant_id)
+ │         └── imei_units   (variant_id)
+ │              └── barcodes(unit_id)      ← one code → this exact unit
  ├── customers              (owner_user_id)
  │    ├── customer_documents(customer_id)
  │    └── invoices          (customer_id)
@@ -127,12 +144,50 @@ users
 ## Key Business Rules
 
 ### Stock Tracking
-Products have two tracking modes set at creation — never changed:
+Tracking mode lives on the **variant**, not the product (`product_variants.track_serials`),
+so one product may have a serialised variant and a counted one:
 
-| `stock_tracking_type` | Stock source | Table used |
+| `track_serials` | Stock source |
+|---|---|
+| `0` | `SUM(stock_movements.qty_delta WHERE variant_id = ?)` |
+| `1` | `COUNT(imei_units WHERE variant_id = ? AND status = 'in_stock')` |
+
+`products.stock_tracking_type` is retained as the **default for new variants** of that
+product and for legacy reads. Use `VARIANT_STOCK_SQL` from `mobipos-software/lib/variants.js`
+rather than rewriting either branch.
+
+### Variants and Price Inheritance
+Every product has exactly one `is_default = 1` variant, created automatically — a shop that
+never opens the variants UI is unaffected. Variant price columns are **nullable and NULL
+means inherit**:
+
+| Variant column (NULL) | Falls back to |
+|---|---|
+| `sale_price` | `products.sale_price` |
+| `min_sale_price` | `products.min_sale_price` |
+| `purchase_price` | `products.default_purchase_price` |
+| `low_stock_alert` | `products.low_stock_alert` |
+
+A variant only stores what differs, so editing the product's price flows through to every
+variant that never overrode it. Clearing a variant's price restores inheritance — it must
+never read as `0`. Always resolve via `VARIANT_EFFECTIVE_COLS` in `lib/variants.js`.
+
+### Barcodes — a code identifies a KIND, not a THING
+100 identical back covers share **one** code: scanning it means "+1", stock is a count.
+A variant holds **several** codes because the same item arrives with supplier A's barcode,
+then supplier B's, plus the shop's own printed label — aliases, not units.
+
+Serialised goods invert this: `kind = 'unit'` points one code at one `imei_units` row.
+
+| `kind` | Target | Scan means |
 |---|---|---|
-| `'imei'` | Count of `imei_units WHERE status = 'in_stock'` | `imei_units` |
-| `'quantity'` | `product_stock.quantity` | `product_stock` |
+| `'variant'` | `variant_id` → `product_variants` | add 1 to the line |
+| `'unit'` | `unit_id` → `imei_units` | add **that** unit |
+
+`barcodes_owner_code_uq` is load-bearing: a code must resolve to exactly one target per shop.
+All scanning goes through `resolveScan()` in `mobipos-software/lib/scan.js`, which tries
+`barcodes` → `imei_units` (imei/imei2/serial_no) → `item_labels` → exact SKU → `#serial_no`,
+and returns `{found:false}` rather than guessing.
 
 ### Product Serial Number (`products.serial_no`)
 - Auto-assigned integer starting at 1, scoped per shop (`owner_user_id`)
@@ -203,6 +258,9 @@ WHERE supplier_id = ? AND status != 'cancelled' AND deleted_at IS NULL
 |---|---|---|
 | `users` | `role` | `'admin'`, `'cashier'` |
 | `products` | `stock_tracking_type` | `'imei'`, `'quantity'` |
+| `product_variants` | `track_serials` | `0`, `1` |
+| `barcodes` | `kind` | `'variant'`, `'unit'` |
+| `barcodes` | `source` | `'manual'`, `'supplier'`, `'printed'`, `'imported'` |
 | `imei_units` | `condition` | `'new'`, `'used'`, `'refurbished'` |
 | `imei_units` | `pta_status` | `'approved'`, `'non-pta'`, `'pending'` |
 | `imei_units` | `source` | `'supplier'`, `'trade_in'` |
@@ -215,13 +273,14 @@ WHERE supplier_id = ? AND status != 'cancelled' AND deleted_at IS NULL
 | `invoices` | `status` | `'completed'`, `'partial'`, `'pending'`, `'cancelled'` |
 | `payments` | `direction` | `'in'`, `'out'` |
 | `payments` | `method` | `'cash'`, `'jazzcash'`, `'easypaisa'`, `'bank_transfer'` |
+| `expenses` | `payment_method` | `'cash'`, `'bank'`, `'jazzcash'`, `'easypaisa'`, `'card'`, `'other'` |
 
 ---
 
 ## Soft Delete Convention
 
 Tables with `deleted_at`:  
-`products`, `customers`, `suppliers`, `purchases`, `invoices`
+`products`, `product_variants`, `customers`, `suppliers`, `purchases`, `invoices`, `ledger_entries`, `expenses`
 
 **Always filter active records with:**
 ```sql
@@ -229,7 +288,7 @@ WHERE deleted_at IS NULL
 ```
 
 Tables without soft delete (hard delete is safe):  
-`product_stock`, `imei_units`, `customer_documents`, `supplier_documents`,  
+`product_stock`, `imei_units`, `barcodes`, `customer_documents`, `supplier_documents`,  
 `purchase_items`, `invoice_items`, `payments`, `categories`,  
 `document_counters`, `shop_settings`, `users`
 

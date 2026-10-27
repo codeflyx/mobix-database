@@ -19,6 +19,14 @@ CREATE TABLE IF NOT EXISTS users (
   phone        TEXT,
   email        TEXT,
 
+  -- LEGACY (deprecated): cashiers briefly lived in this table. They now have
+  -- their own `staff` table (see 02_staff.sql); mobipos-admin migrates any old
+  -- rows out and keeps `users` for shop owners only. These nullable columns are
+  -- harmless leftovers on databases that already have them.
+  parent_admin_id TEXT,
+  staff_role      TEXT,
+  permissions     TEXT,
+
   is_active    INTEGER NOT NULL DEFAULT 1
                CHECK (is_active IN (0, 1)),
 
@@ -27,3 +35,4 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_uq ON users (username);
+CREATE INDEX IF NOT EXISTS users_parent_admin_idx ON users (parent_admin_id);

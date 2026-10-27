@@ -9,7 +9,16 @@
 --   'return_sale'      → RSL-000001
 --   'return_purchase'  → RPR-000001
 --   'product'          → plain integer serial_no for products
--- padding = 6 gives 000001 … 999999.
+--   'item_label'       → 11-digit numeric body (prefix '', padding 11) for
+--                        item_labels.code; a GS1 (UPC-A/EAN-13 style) check
+--                        digit is appended
+--                        by the app, making the printed code 12 digits.
+-- padding is per doc_type and set by the app from lib/documentNumbers.js:
+--   invoice                          → 5  (POS-00001 … POS-99999)
+--   purchase / repair / easyload /
+--   adjustment / old_sale_bill       → 4  (PUR-0001 … PUR-9999)
+--   item_label                       → 11 (GS1 body; do NOT change)
+-- Exceeding the width is harmless — the number simply grows wider.
 -- One row per (owner_user_id, doc_type).
 -- ============================================================
 
@@ -21,7 +30,7 @@ CREATE TABLE IF NOT EXISTS document_counters (
   prefix        TEXT NOT NULL,
 
   next_no       INTEGER NOT NULL DEFAULT 1,
-  padding       INTEGER NOT NULL DEFAULT 6,
+  padding       INTEGER NOT NULL DEFAULT 4,
 
   updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );

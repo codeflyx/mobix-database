@@ -9,6 +9,13 @@
 --   'cash' | 'jazzcash' | 'easypaisa' | 'bank_transfer'
 --   'credit' = khata/udhaar (paid_total = 0, balance owed)
 --   'mixed'  = partial payment + partial credit
+--   A coarse enum, deliberately: the precise method lives on the payment row
+--   (payments_new.method / payment_account_id), which is what invoice lists and
+--   receipts label a sale from. POS options this enum has no value for map onto
+--   the nearest one — "unpaid" is stored as 'credit' (money owed, just not on
+--   anyone's khata), and a complementary (free) sale as 'mixed', the one value
+--   that names no real account, with method 'complementary' on its payment row
+--   and a matching expense under the "Complementary" category.
 -- paid_total: sum of linked payments WHERE direction = 'in'.
 -- change_due: cash returned to customer (paidAmount - total).
 -- void_reason: populated when status = 'cancelled'.
@@ -17,6 +24,11 @@
 --   'partial'   → partially paid (khata balance remains)
 --   'pending'   → not yet paid
 --   'cancelled' → voided
+-- sold_by_staff_id: who gets commission credit for this sale (staff.id, this
+--   tenant DB's own staff table). NULL = the shop owner rang it up themself.
+--   Deliberately separate from created_by (the logged-in operator, for audit)
+--   so a sale can be credited to a salesperson even if an admin or a different
+--   cashier processed the payment.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS invoices (
@@ -30,6 +42,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   original_invoice_id  TEXT REFERENCES invoices (id),
 
   customer_id          TEXT REFERENCES customers (id),
+  sold_by_staff_id     TEXT REFERENCES staff (id),
 
   sale_mode            TEXT NOT NULL DEFAULT 'cash'
                        CHECK (sale_mode IN ('cash', 'jazzcash', 'easypaisa', 'bank_transfer', 'credit', 'mixed')),
@@ -62,3 +75,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS invoices_owner_no_uq
 
 CREATE INDEX IF NOT EXISTS invoices_customer_idx
   ON invoices (customer_id);
+
+CREATE INDEX IF NOT EXISTS invoices_sold_by_staff_idx
+  ON invoices (sold_by_staff_id);

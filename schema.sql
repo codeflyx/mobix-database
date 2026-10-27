@@ -427,6 +427,12 @@ CREATE INDEX IF NOT EXISTS purchase_items_purchase_idx
 -- sale_mode: snapshot of how this sale was paid — avoids
 --   joining payments just to show the payment method in a list.
 --   'credit' = khata/unpaid. 'mixed' = partial cash + partial credit.
+--   A coarse enum on purpose: the precise method is on the payment row
+--   (payments_new.method / payment_account_id). POS options with no value of
+--   their own map onto the nearest one — "unpaid" is stored as 'credit', and a
+--   complementary (free) sale as 'mixed', the only value naming no real
+--   account, with method 'complementary' on its payment row and a matching
+--   expense under the "Complementary" category.
 -- void_reason: populated when status = 'cancelled'.
 -- paid_total: sum of linked payments WHERE direction = 'in'.
 

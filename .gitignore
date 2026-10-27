@@ -1,0 +1,3 @@
+# Database dumps contain live shop data (customers, phones, CNICs, sales).
+# Never commit them.
+backups/
