@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS customers (
   deleted_at      TEXT,
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+, email TEXT
 );
 
 CREATE TABLE IF NOT EXISTS document_counters (
@@ -1048,6 +1049,9 @@ CREATE TABLE IF NOT EXISTS shop_settings (
   invoice_prefix       TEXT NOT NULL DEFAULT 'INV',
   purchase_prefix      TEXT NOT NULL DEFAULT 'PUR',
   receipt_footer_text  TEXT,
+  -- JSON: { purpose: "text with {tokens}" }. Only the purposes the owner has
+  -- actually edited; the rest fall back to WA_DEFAULTS in lib/whatsapp.js.
+  whatsapp_templates   TEXT,
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -1119,6 +1123,9 @@ CREATE TABLE IF NOT EXISTS suppliers (
   deleted_at    TEXT,
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+, alternate_phone TEXT
+, email TEXT
+, payment_terms TEXT
 );
 
 CREATE TABLE IF NOT EXISTS web_order_items (
