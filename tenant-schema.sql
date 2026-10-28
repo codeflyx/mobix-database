@@ -1052,6 +1052,10 @@ CREATE TABLE IF NOT EXISTS shop_settings (
   -- JSON: { purpose: "text with {tokens}" }. Only the purposes the owner has
   -- actually edited; the rest fall back to WA_DEFAULTS in lib/whatsapp.js.
   whatsapp_templates   TEXT,
+  -- JSON blob of the shop's marketing preferences; self-healed by
+  -- lib/marketingSettings.js, so it lives here too or a freshly provisioned
+  -- shop only gets it if that self-heal happens to fire first.
+  marketing_settings   TEXT,
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -1225,6 +1229,90 @@ CREATE TABLE IF NOT EXISTS qist_installments (
       updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
     );
 
+-- table: marketing_campaigns
+-- One bulk WhatsApp campaign. See mobipos-software/lib/marketingSchema.js.
+CREATE TABLE IF NOT EXISTS marketing_campaigns (
+      id             TEXT PRIMARY KEY NOT NULL,
+      owner_user_id  TEXT NOT NULL REFERENCES users (id),
+
+      name           TEXT NOT NULL,
+      message        TEXT NOT NULL,
+
+      status         TEXT NOT NULL DEFAULT 'running',
+
+      total          INTEGER NOT NULL DEFAULT 0,
+      sent           INTEGER NOT NULL DEFAULT 0,
+      failed         INTEGER NOT NULL DEFAULT 0,
+      skipped        INTEGER NOT NULL DEFAULT 0,
+
+      started_at     TEXT,
+      finished_at    TEXT,
+
+      created_by     TEXT REFERENCES users (id),
+      deleted_at     TEXT,
+      created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+
+-- table: marketing_recipients
+-- One row per person in a campaign. Doubles as the contact history every
+-- later campaign reads to answer "who have we not reached yet".
+CREATE TABLE IF NOT EXISTS marketing_recipients (
+      id             TEXT PRIMARY KEY NOT NULL,
+      owner_user_id  TEXT NOT NULL REFERENCES users (id),
+      campaign_id    TEXT NOT NULL REFERENCES marketing_campaigns (id),
+
+      customer_id    TEXT REFERENCES customers (id),
+      name           TEXT,
+      phone          TEXT,
+
+      status         TEXT NOT NULL DEFAULT 'pending',
+      message_sent   TEXT,
+      error_message  TEXT,
+      skip_reason    TEXT,
+
+      sent_at        TEXT,
+      created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+
+-- table: marketing_contacts
+-- The Do Not Message list. Campaigns only - a customer who opts out still
+-- gets their own bills and repair updates.
+CREATE TABLE IF NOT EXISTS marketing_contacts (
+      id             TEXT PRIMARY KEY NOT NULL,
+      owner_user_id  TEXT NOT NULL REFERENCES users (id),
+      customer_id    TEXT NOT NULL REFERENCES customers (id),
+
+      opted_out      INTEGER NOT NULL DEFAULT 0,
+      reason         TEXT,
+      opted_out_at   TEXT,
+
+      created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+
+-- table: whatsapp_auto_log
+-- What the automations sent without being asked, including what they could
+-- not send. See mobipos-software/lib/whatsappAuto.js.
+CREATE TABLE IF NOT EXISTS whatsapp_auto_log (
+      id             TEXT PRIMARY KEY NOT NULL,
+      owner_user_id  TEXT NOT NULL REFERENCES users (id),
+
+      trigger_key    TEXT NOT NULL,
+      customer_id    TEXT REFERENCES customers (id),
+      name           TEXT,
+      phone          TEXT,
+
+      status         TEXT NOT NULL,
+      message_sent   TEXT,
+      error_message  TEXT,
+      skip_reason    TEXT,
+
+      occurred_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+
 -- ── Indexes ──────────────────────────────────────────────────────────────
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_uq ON users (username);
@@ -1328,3 +1416,8 @@ CREATE INDEX IF NOT EXISTS web_orders_status_idx ON web_orders (status, created_
 CREATE INDEX IF NOT EXISTS qist_plans_owner_status_idx ON qist_plans (owner_user_id, status);
 CREATE INDEX IF NOT EXISTS qist_inst_plan_idx ON qist_installments (plan_id, seq);
 CREATE INDEX IF NOT EXISTS qist_inst_owner_due_idx ON qist_installments (owner_user_id, due_date);
+CREATE INDEX IF NOT EXISTS marketing_campaigns_owner_idx ON marketing_campaigns (owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS marketing_recipients_campaign_idx ON marketing_recipients (campaign_id, status);
+CREATE INDEX IF NOT EXISTS marketing_recipients_customer_idx ON marketing_recipients (owner_user_id, customer_id, sent_at);
+CREATE UNIQUE INDEX IF NOT EXISTS marketing_contacts_customer_idx ON marketing_contacts (owner_user_id, customer_id);
+CREATE INDEX IF NOT EXISTS whatsapp_auto_log_owner_idx ON whatsapp_auto_log (owner_user_id, occurred_at DESC);
