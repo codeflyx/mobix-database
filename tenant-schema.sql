@@ -1300,6 +1300,8 @@ CREATE TABLE IF NOT EXISTS whatsapp_auto_log (
       owner_user_id  TEXT NOT NULL REFERENCES users (id),
 
       trigger_key    TEXT NOT NULL,
+      source         TEXT NOT NULL DEFAULT 'auto',
+      via            TEXT,
       customer_id    TEXT REFERENCES customers (id),
       name           TEXT,
       phone          TEXT,
