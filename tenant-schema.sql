@@ -421,7 +421,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   deleted_at           TEXT
-, sold_by_staff_id TEXT REFERENCES staff (id)
+, sold_by_staff_id TEXT REFERENCES employees (id)
 -- Captured at the sale, not joined: an employee who leaves, or is renamed,
 -- must still read correctly on last month's invoices.
 , sold_by_name TEXT);
@@ -652,7 +652,7 @@ CREATE TABLE IF NOT EXISTS pos_preferences (
        owner_user_id          TEXT PRIMARY KEY NOT NULL REFERENCES users (id),
        show_account_balances  INTEGER NOT NULL DEFAULT 0,
        updated_at             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-     , default_staff_id TEXT REFERENCES staff (id), block_negative_stock INTEGER NOT NULL DEFAULT 0
+     , default_staff_id TEXT REFERENCES employees (id), block_negative_stock INTEGER NOT NULL DEFAULT 0
      -- 'all' | 'imei' | 'quantity' | 'never' — see PO_SCAN_TRAY_MODES.
      , po_scan_tray TEXT NOT NULL DEFAULT 'all'
      , show_stock_on_pos INTEGER NOT NULL DEFAULT 1);
@@ -1347,6 +1347,15 @@ CREATE INDEX IF NOT EXISTS expenses_owner_category_idx
 CREATE INDEX IF NOT EXISTS expenses_owner_date_idx
   ON expenses (owner_user_id, occurred_at);
 CREATE INDEX IF NOT EXISTS fingerprint_scan_log_owner_time_idx ON fingerprint_scan_log (owner_user_id, scanned_at);
+-- A party's balance is SUM(amount) over their ledger rows, and that sum is
+-- read on every row of the Customers and Suppliers lists, on the dashboard
+-- and in the Adjust dialog. Without these it is a full table scan each
+-- time, on the one table that grows with every sale, payment and
+-- adjustment the shop ever makes.
+CREATE INDEX IF NOT EXISTS ledger_entries_owner_customer_idx
+  ON ledger_entries (owner_user_id, customer_id);
+CREATE INDEX IF NOT EXISTS ledger_entries_owner_supplier_idx
+  ON ledger_entries (owner_user_id, supplier_id);
 CREATE INDEX IF NOT EXISTS idx_easyloads_customer ON easyloads (customer_id);
 CREATE INDEX IF NOT EXISTS idx_easyloads_owner_created
      ON easyloads (owner_user_id, created_at);
